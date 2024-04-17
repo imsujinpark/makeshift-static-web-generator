@@ -1,106 +1,126 @@
 # Makeshift static website generator
 
-This is a work-in-progress makeshift static website generator.
+This is my personal makeshift static website generator, `mswg`.
 
-"Makeshift" as in:  
-> /ˈmākˌSHift/  
-> adjective  
-> serving as a temporary substitute; sufficient for the time being.  
+```
+Makeshift, adjective:
+/ˈmākˌSHift/
+> Serving as a temporary substitute; sufficient for the time being.
+```
 
-Except I'll probably rather stick to it rather than learn yet another tool (such as Jekyll or whatever).
+It tries to be a much simpler (around 300 loc) and feature-less alternative to other similar tools.
+
+This repository includes:
+* The source code for `mswg`: The static website generator (`compile.js`, which is fully documented)
+* An example project (`./example`) to be built with `mswg`.
 
 ## Usage
 
-The repository includes both the static website generator (mostly just `compile.js`) as well as an example of a site to generate (including `index.html` and the folders `./src` and `./markdown_content`).
+You can either directly run the code with node...
 
-In order to generate the site just execute `node compile.js` and the tool will put the ready to use static website in the `./out` folder.
+```ps1
+cd example
+node ../compile.js build --dependencies src --pages index.html
+```
 
-You can also build the application into a single `exe` file by running `npx pkg -t node18-win .\compile.js`, which will generate a file `compile.exe`, which you can then execute freely in a different project.
+... or you can also **package** the tool into a single binary file (`mswg.exe`) by running the script `build.ps1`.
+
+```ps1
+./build.ps1
+cd example
+../bin/mswg.exe build --dependencies src --pages index.html
+```
+
+> Check the script `build.ps1` for details on how to build the tool for `macos` or `linux`
 
 ## Features
 
-The features include:
-* **Embeddeing markdown content** directly into the `html` files.
-* **Bundling** the site and dependencies together in a single folder.
-* A way to embed custom constructs into your markdown articles, which I call **templates**.
+The tool `mswg` allows you to:
+
+* Embed markdown content directly into the a **page**.
+* Write `html` **templates** which you can reuse by providing different input data int `json` format, and inject those into your markdown files and **page**s.
+* Bundle the `project` and it's `dependencies` together in a single folder, ready to be deployed.
 
 ## Manual
 
-### Setup dependencies and pages
+### Projects, Dependencies and Pages
 
-The `compile.js` file contains these in the source code:
+There is 3 simple concepts to understand when using this tool:
 
-```js
-async function build_project() {
-    
-    // ...
+* The **Project** is a folder which contains all the files required to build your static website.
+    Check out the folder `example` for an example project.
 
-    const dependencies = [
-        './src/',
-    ];
+* A **page** is any `html` or markdown file, which may or may not make use of **templates**.
+    Your project may have multiple pages, which you can declare like this:
+    ```ps1
+    mswg.exe build --dependencies ./src ./css --pages index.html about.html
+    ```
+* The project **dependencies** are the files that your **pages** require to properly work, such as `css` or `js` files, or even a folder full of files called `./resource`.
+    You can declare them like this:
+    ```ps1
+    mswg.exe build --dependencies ./src ./css ./node_modules/some_lib/lib.min.js --pages index.html
+    ```
 
-    // ...
+### Embedding `html`, `md` or `templates` into your pages
 
-    const html_files = [
-        './index.html',
-    ];
-    
-    // ...
-}
-```
+Here is an example that use most of the features of the project:
 
-The array of `dependencies` specifies the files that are hard dependencies for the project. These can be either single files such as `./node_modules/some_library/some_library.min.js` or full folders such as `./src`. These will be copyed as-is directly into the `./out` folder. Anything that the page `index.html` requires should be listed in the `dependencies` array.
+> NOTE! There is no way (for now?) to escape `<` or `{` so, during the incoming examples, whenever you see `{{` or `<<`, know that `mswg` expects them to be in triplets, not doubles like in this examples!
 
-Note that the main site `index.html` should be listed in the array `html_files`, since these are not copied as is like the `dependencies` are. Instead, all the files in `html_files` will be processed. That processing will transform those `html` files without modifying the original ones, and put the processed version on the `./out` folder.
-
-The processing of `html` files includes:
-* Embedding markdown articles
-* Processing templates inside markdown articles
-
-### Markdown article embedding
-
-For every `article` element with an `id` set, the compiler will look for a file `./markdown_content/id.md`, and if it exists, it will embed the markdown inside the `article` tag.
+Say we have a `templates/project_list.html` template for listing open-source projects. It might look something like this...
 
 ```html
-<article id="some_id"></article>
+<h1>{{title}}</h1>
+<!-- Special repeated section! -->
+<section type="repeat" input="list">
+    <h2>{{title:list}}</h2>
+    <p style="text-align: right; color:gray">
+        {{dateRange:list}}
+    </p>
+    <div class="border p-3 m-3">
+        {{description:list}}
+    </div>
+</section>
 ```
 
-In that case, the compiler will look for the file `./markdown_content/some_id.md` and put it in there.
+... and a `data/projects.2022.json` file with the data that will populate said template:
 
-### Using Template constructs inside Markdown
 
-You can use templates in order to add things to your markdown articles that are otherwise not possible with only markdown.
-
-It's not great or easy, as it requires the template to be directly implemented inside the source code of `compile.js`. Here is an example...
-
-Say you want to add a center-aligned piece of text, you can do so by writing this inside your markdown file:
-
-````markdown
 ```json
-/*template*/
 {
-    "template":"fancy_subtitle",
-    "config": {
-        "position":"center",
-        "content": "24/11/2022"
-    }
+    "title": "My projects of 2022",
+    "list": [
+        {
+            "dateRange": "2022 October ~ 2022 November",
+            "title": "Project Cutepon",
+            "description": "I made a web application at https://cutepon.net!"
+        },
+        {
+            "dateRange": "2022 November ~ 2022 December",
+            "title": "Makeshift Static Website Generator",
+            "description": "<<../readme.md>>"
+        }
+    ]
 }
 ```
-````
 
-The `compile.js` contains this code, which will find that construct in the markdown files, and handle it to obtain the desired effect.
+We can embed this data directly into our page `index.html` by adding the tag:
 
-```js
-switch (template_json.template) {
-    
-    // If the template is of type fancy_subtitle
-    case "fancy_subtitle": {
-        // Get the configuration fo the template
-        const config = template_json.config;
-        // Un using `cheerio` to manipulate the dom here.
-        // This line of code is basically taking the html element that represents the markdown template piexe of text we wrote "$($(pre_code).parent())".
-        // And then it replaces it with a <div> tag, making it so that the original element gets replaced with the desired construct.
-        $($(pre_code).parent()).replaceWith($(`<div style="text-align: ${config.position};">${config.content}<div>`));
-    } break;
-}
+```html
+<section type="template" template="templates/project_list.html" input="data/projects.2022.json"></section>
 ```
+
+The resulting html will contain the `<section type="repeat">` twice, since there is 2 items inside the `list` in the input file.
+
+As you can see there is 2 types of special tags: `<<some/file.html>>` and `{{input_variable}}`.
+* The first type `<<>>` will directly include the file in-place.
+  * Both `html` and markdown files are allowed. 
+  * These are parsed recursively. Meaning, you can set the description as `"description": "<<../readme.md>>>"` and the `../readme.md` file will be directly inserted in the description.
+* The second type `{{}}` will inject the data from the input object.
+  * If they are inside a `<section type="repeat">` they must be include the list of objects where the data is taken from, like this `{{field_name:list_name}}`. The `list_name` must match the attribute `input` in the `<section>` tag.
+  * If the `input` list is an array of primitive types rather than objects, just declare them like this `{{#:list_name}}`
+
+
+## Used in...
+
+These websites use `mswg`: <https://oaguinagalde.github.io/> and <https://imsujinpark.github.io/>.
